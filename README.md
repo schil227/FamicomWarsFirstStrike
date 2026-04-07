@@ -56,13 +56,95 @@ Instead of "simultaneous" damage, I wanted:
     - Else, deal damage to the attacker proportional to the defender's health
 
 ## Investigation
-As stated, most of the work was very much orientation. This section details that.
+As stated, most of the work was around orienting myself in the code. This section loosely details that process.
 
 ### Where to begin
+I knew roughly what I was looking for; I wanted to figure out where the damage was being calculated. But to find that, I would need to know where the unit data was stored. I could imagine a few properties in my head: The unit would certainly have current HP, fuel, ammo, x/y location on the grid, etc. But finding that data is looking for a needle in the haystack. I knew that games often moved working memory to the "zero page" (between $00 and $FF in RAM) so that working with it was faster, however I wasn't seeing anything that promising. Turns out, damage calculation did have an "intermediate location" - between `$04Dx` and `$04Ex`. After watching the battle animation a few times, I started to notice that some of these values effected the outcome (more on that later). But, I was still unsure where the units were located. After some more sluting, eventually I found out.
 
 ### My Units, Your Units
 
-### The Great Big Damage Calcuation
+<p align="center">
+  <img src="images/units_ram.PNG" alt="The location of unit data in RAM"/>
+</p>
+
+Way in the back starting at `$7400` is where player 1's units are stored, while player 2's units are stored in `$7700`. After poking the values quite a bit, I found out some stuff. First off, it's a list of units; each row represents a unit (I have 26 of them in my army). Each column is the value of a different property: for example, $01 is the type of the unit. $02 means that the unit is an infantry for player 1, and $03 also represents an infantry, but for player 2. Out of curiosity, I mapped out a few values more values:
+
+| ID | Unit |
+|---|---|
+| $02 | Infantry |
+| $04 | Engineer (a.k.a. Mech) |
+| $06 | Tank A (big) |
+| $08 | Tank A (little) |
+| $0A | APC |
+| $0C | Artillery A (big) |
+| $0E | Artillery B (little) |
+| $10 | Missiles |
+| $12 | Flack Gun |
+| $14 | Supply Truck |
+
+Adding $01 to each of these values would produce the same unit, but for player 2. Why does it start at $02 instead of $00? Well it has to do with the damage lookup (which, I'll get to in the next section).
+
+Anyways, there are some other properties as well, but the most useful is located at $05: the current HP of the unit. Interestingly, a fully healed 10-hp unit is represented as $63, which has a decimal value of 99. In my initial search, I was looking for $0A (decimal: 10), but it makes a lot more sense that the number is a bit more "granular". Anyways, I found an address to listen to: I could set a breakpoint on a particular unit's HP (e.g. `$7405`), engage that unit in combat, and see where it leads. So, I did.
+
+### The Combat Calculation function
+
+Not surprisingly, the meat of the war game is about determining the damage done between two units. Attaching a breakpoint on one of those units health and walking back from it, I certainly found what I was looking for. I don't actually know for certain where it begins (nor is it particularly relevant for me) but to give some sense of scope, it starts somewhere around `$01ADXX` (possibly earlier) and goes to `01AF90`. Its a lot of code, but it's relatively straightforward. 
+
+As I mentioned earlier, the "data" concerning the two combating units is stored in both  `$04DX` and `$04EX`, but the `E` row is a bit more relevant. For example, the attacking unit's HP is read from the `$7XXX` location (depending on whether it's player 1 or 2) and stored at `$04E1`, while the defending unit's HP is stored at `$04E2`. The rest of the row (thankfully) maintains this attacker value / defender value back-and-forth. Skipping ahead, we see something very exciting: 
+
+
+<p align="center">
+  <img src="images/damage_lookup_table_call.PNG" alt="6502 code of the damage lookup table call"/><br/>
+  Wow.
+</p>
+
+This code determines how much damage the units do to each other, not adjusted for their health. The first time I saw this I had no idea what it was doing, but I knew that at the end the Accumulator stored the damage of the attacker, while the X register stored the damage done by the defender. Lets walk through this:
+
+Setup: player 1's Tank B attacked player 2's infantry. The IDs for these units are `$08` for player 1's tank B, and `$03` for player 2's infantry. Before this function call, these values were stored in the addresses `$00` and `$02`, respectively.
+
+```
+LDA $00    ; Loads $08 into acc (attacker's tank unit)
+LSR        ; logical shift right, acc goes from `1000` to `0100` ($04)
+STA $00    ; store $04 back to address $00 ($00: $04, $02: $03)
+DEC $00    ; decrement the value at the address $00 ($00: $03, $02: $03)
+LDA $02    ; loads $03 to acc
+LSR        ; logical shift right, acc goes from `0011` to `0001`
+STA $02    ; store acc in $02 ($00: $03, $02: $01)
+DEC $02    ; decrement $02 ($00: $03, $02: $00)
+LDA $00    ; load $00 back into acc ($03)
+JSR $C3EA  ; subroutine that calls ASL 4 times
+		   
+           ; so, acc is $03, which is 0000 0011
+           ; ASL 1: 0000 0110
+           ; ASL 2: 0000 1100
+           ; ASL 3: 0001 1000
+           ; ASL 4: 0011 0000
+		       ; The processed attacker byte was shifted from low to high, which effects the value looked up in the table.
+ORA $02    ; this combines the processed attacker unit value with the processed defender unit value.
+           ; $02 is zero, but if you OR them, you'd end up with <$00,$02>:
+           ; result => 0011 0000 ($30)
+TAY		     ; this processed value is transferred to Y
+LDA $E4E2,Y; $E4E2 + $30 => $E512, which is $37
+           ; To explain these values:
+           ; $E4E2 is the beginning of the damage lookup table. 
+           ; We add the <attacker id, defender id> composite to it, which jumps to the "tank damage" row, and the "infantry" column
+           ; $37 (decimal: 55) is the amount of damage a tank does to an infantry unit.
+PHA        ; Pushes the accumulator to the stack ($37)
+           ; At this point, we do the same-but-opposite: we look up the damage the infantry does to the tank.
+LDA $02    ; Loads defender unit (infantry)
+JSR $C3EA  ; Performs the same shift on them (which, results in ASL x4 $00 => $00)
+ORA $00    ; combines it with the attacker (tank B) unit 
+           ; 0000 0011 ($03)
+TAY        ; Y becomes $03
+LDA $E4E2,Y; loads $E4E5 + $03 => $0F (decimal 15), which is the damage the infantry does to tanks.
+TAX        ; puts $0F into X
+PLA        ; Pull accumulator from stack ($37)
+RST        ; returns with the damage each unit will receive
+```
+
+So, acc holds $37 (damage tank B does to an infantry), and X holds $0F (the damage an infantry does to Tank B).
+
+These values are then stored in `$04E5` (attacker) and `$04E6` (defender).
 
 ### The Mystery Functions
 
