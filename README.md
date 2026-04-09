@@ -1,7 +1,7 @@
 # Famicom Wars - First Strike
 
 <p align="center">
-  <img src="images/title.PNG" alt="Title"/>
+  <img src="images/map_view.png" alt="Title"/>
 </p>
 
 This repo contains the patch for the NES game Famicom Wars, which implements "First Strike". This means that attacking units deal damage to defenders first, as opposed to simultaneous damage. This significantly helps alleviate the game from turning into a tedious slog.
@@ -20,6 +20,11 @@ To install the patch, follow these steps:
 Note: This patch is (to my knowledge) compatible with existing translation patches. I highly recommend the [English patch](https://www.romhacking.net/translations/6828/) by Stardust Crusaders (et. al.), which I used while creating this patch.
 
 # The Problem
+
+<p align="center">
+  <img src="images/title.PNG" alt="Title"/>
+</p>
+
 Famicom Wars has a healthy legacy that spans even to this day, notably for being the fist entry in the *Wars* series. This eventually begat Advance Wars, one of my favorite games - but what's remarkable is just how similar the two games are to one-another. Or rather, how two games can be so similar to one another, but play completely differently. Advance Wars is *snappy* - units hit harder, there's CO powers to turn the tides, and playing against the CPU is *at least* an order of magnitude faster. Indeed, Advance Wars has the benefit of being made in the future, both on better hardware after a handful of sequels, this is certainly no fault to Famicom Wars. However, if I had to pick *one thing* that totally turns me off from playing Famicom Wars, it would be that most games turn into a total quagmire. 
 
 Restated, Famicom Wars lacks *momentum*. Without momentum, units tend to pile up in the middle of the map, unable to make a real dent in one side or the other. The root of the issue, from my perspective, is that damage is done simultaneously. When you attack, you are punished; an infantry attacking another infantry means that both sides will roughly take 45% damage, minus their terrain bonuses. A full-HP infantry on a city will require between 3 and 4 attacking infantry to destroy it, each in turn receive chip damage (even the one which destroys it!). So you invest heavily in artillery, which only further punishes actions on either sides as breaking down "unit walls" is even harder here. 
@@ -92,6 +97,7 @@ Not surprisingly, the meat of the war game is about determining the damage done 
 
 As I mentioned earlier, the "data" concerning the two combating units is stored in both  `$04DX` and `$04EX`, but the `E` row is a bit more relevant. For example, the attacking unit's HP is read from the `$7XXX` location (depending on whether it's player 1 or 2) and stored at `$04E1`, while the defending unit's HP is stored at `$04E2`. The rest of the row (thankfully) maintains this attacker value / defender value back-and-forth. Skipping ahead, we see something very exciting: 
 
+### The Damage Lookup Table
 
 <p align="center">
   <img src="images/damage_lookup_table_call.PNG" alt="6502 code of the damage lookup table call"/><br/>
@@ -113,7 +119,6 @@ STA $02    ; store acc in $02 ($00: $03, $02: $01)
 DEC $02    ; decrement $02 ($00: $03, $02: $00)
 LDA $00    ; load $00 back into acc ($03)
 JSR $C3EA  ; subroutine that calls ASL 4 times
-		   
            ; so, acc is $03, which is 0000 0011
            ; ASL 1: 0000 0110
            ; ASL 2: 0000 1100
@@ -146,13 +151,60 @@ So, acc holds $37 (damage tank B does to an infantry), and X holds $0F (the dama
 
 These values are then stored in `$04E5` (attacker) and `$04E6` (defender).
 
-### The Mystery Functions
+### Damage Adjustment
 
-### 
+We have the attacker and defenders HP, and the damage they do to one another; the next important piece is calculating the *actual* damage that the unit can do. The damage done is proportional to the units HP: 100% HP means 100% damage, 75% HP => 75% damage, etc. This logic is done around 01AE23, first for the attacker, then for the defender:
+
+<p align="center">
+  <img src="images/damage_adjustment.png" alt="damage adjustment for the defender"/><br/>
+</p>
+
+I won't walk through this one, but I'll roughly explain what the sections are doing. 
+
+The red section is the adjustment logic for the attacker. The attacker's HP and Damage values are loaded into addresses `$00` and `$01`, respectively. Then, they're pumped through two ~Magic~ sub routines (`$C681` and `$AF81`), and the adjusted damage ends up in `$01`. 
+
+Now these two ~Magic~ sub routines show up a few times in here, and they're rather complex and im unsure how they work. After walking through them (twice), I still don't quite get it - but basically, given inputs N and M, it returns a rato of M equal to N / 100. So, if a unit has 50% hp (N) and does $40 damage (M) at full HP, you would get a result of (roughly*) `$20`. This attacker adjusted damage is then stored in `$04E7`.
+
+(*This is pure speculation, but I think this is also responsible for the "luck" roll. Without going too deep into the details, the N factor will generally produce a higher number if it has more 1s in it, especially in the higher digits (e.g. #63 = 0110 0011). I could experiment with this, but I'm tired and hungry and I'll leave it at that.)
+
+Anyway The blue section concerns the adjusted attack for the defender, and functionally it's mostly identical to the Attacker's, but with one slight difference. The Green section does some checks against two fields: `$04DC`, and `$04DF`. Now, when the attacker attacks the defender, this is done via the UI by selecting a unit within range, and at that level, the ammo of the attacker is checked. Meaning, as a prerequisite to even getting to this logic, the attacker must have had ammo, and the unit must have been in range. But for the defender to attack the attacker, *they* must have similar checks - and this is that green section. The defender's ammo is checked at `$04DC` (*?*\*), and if it's zero, then the value $0 is stored to the defender's adjusted damage in `$04E8`. Likewise, if the attacker is an indirect unit (`$04EF`)(*?*\*) , then again, the counter attack damage is $0. This turns out to be a very useful detail when doing the actual code change for this patch: If the defender cannot attack (and therefore does not shoot in the animations, etc.), then their adjusted damage value is $0.
+
+(\*I don't actually recall for certain if these addresses correspond to those actual things, but I'm *pretty sure* and I'm tired and hungry and I'll leave it at that.)
+
+So; we know the *actual* damage the attacker and defender will do, *and* we know which lines of code to invoke to calculate the adjusted damage. This may be useful in, say, determining how much damage a defender can do after they've been *attacked first*.
+
+### Combat Resolution
+
+Finally, we get to where the combat is resolved, and where the code change actually occurs. I'll attempt to explain both at once:
+
+<p align="center">
+  <img src="images/combat_resolution.png" alt="Combat resolution code, and the way the patch re-arranges it"/><br/>
+</p>
+
+On the left-hand side is the original code, and on the right the code change for this patch. We'll first explore the left side to get acquainted with the code. As said earlier, damage is done simultaneously, and it just so happens that the attacker is resolved first, and the steps are as follows:
+
+1. The adjusted damage done by the defender `$04E8` and the terrain defense for the attacker `$04E9` (omitted from this writeup) are loaded. These two values go through the ~Magic~ SRs (`$C681` and `$AF81`), and the adjusted defense value is produced in $00. 
+    - I really don't know why this is necessary
+1. The adjusted damage done by the defender `$04E8` is again loaded. The adjusted attacker defense value at $00 is subtracted from the adjusted defender damage, and the result (final damage value) is stored in $00.
+1. The attacker's HP is loaded `$04E1`, and now the final damage value is subtracted from the attacker's health. 
+    - If there was any overkill, the attacker's HP is just set to 0.
+1. Finally, the attacker's HP value is converted to a number between 0 and 10, rounded up (e.g. 76% HP => 8 HP)
+
+For the defender, the same is done, but the opposite.
+
+Now, in order to do First Strike, the order needs to be reversed, and the defender's adjusted damage value needs to be updated *after* their HP reduced. What's neat about this change is that the vast majority of the code is just moved around. In the right side, this is clear: the defender is resolved first, then the attacker. The code is identical except, instead of loading the defender's adjusted damage value (`LDA $04E8`), the code jumps to the (`01BEEF`) sub routine to re-calculate the damage value. 
+
+In BEEF, most of the code is copied (see the Damage Adjustment section above), however a little guard-clause was added in the beginning. That clause checks if the defender's adjusted damage is already zero - and if so, just return. Recall that if the adjusted damage value was already zero, it means that the defender couldn't counter attack (e.g. out of ammo, attacker was an indirect). But just the same, if the damage received from the attacker is enough to destroy the defender, then the adjusted damage value would return zero anyway. Once this value is calculated, then the combat resolves for the attacker, and then combat is complete.
 
 # Conclusion
-I've made patches in the past to improve old games (see: [1](https://github.com/schil227/FantasticAdventuresOfDizzyFair), [2](https://github.com/schil227/JourneyToSiliusFair)), but I am especially pleased with this one. While those patches were focused on tweaking the difficulty to make the game more fun, this one's focus is to make it less boring. That said, it doesn't make the game *perfect*. There are some dubious unit match-ups: for example, a bomber does a pathetic 50% damage to infantry, while infantry (dudes literally standing on the f****** ground) do 5% damage. Apples to apples, the bomber has done 500G damage to the infantry, and the infantry has done 1000G damage to the bomber. That's ridiculous... but at least with this patch, the trade-off is an even 500G (still ridiculous). 
+<p align="center">
+  <img src="images/yatta_big.png"/><br/>
+</p>
 
-There is a [thriving community](https://awbw.amarriner.com/) which, in recent years, has seen a dramatic increase in players interested in Advance Wars. In that vein, I think there's still interest in Famicom Wars. This patch improves it, and makes it a lot more palatable to "modern" players - however, I think that a few more tweaks would really make this game shine. That said, I'll keep this change as a stand-alone patch, because a part of me really enjoys the "weirdness" of Famicom Wars, and I think those who dig into the past would enjoy it as well.
+I've made patches in the past to improve old games (see: [Fantastic Adventures of Dizzy: Fair Edition](https://github.com/schil227/FantasticAdventuresOfDizzyFair), [Journey To Silius: Fair Edition](https://github.com/schil227/JourneyToSiliusFair)), but I am especially pleased with this one. While those patches were focused on tweaking the difficulty to make the game more fun, this one's focus is to make it more engaging. That said, this patch doesn't make the game *perfect*. There are other things which contribute to the tedium, beyond the slow AI and clunky UI. 
+
+For example, there are some dubious unit match-ups: a bomber does a pathetic 50% damage to infantry, while infantry (some dudes literally standing on the f****** ground) do 5% damage. Apples to apples, the bomber has done 500G damage to the infantry, and the infantry has done 1000G damage to the bomber. That's ridiculous... but at least with this patch, the trade-off is an even 500G (still ridiculous). 
+
+There is a [thriving community](https://awbw.amarriner.com/) which, in recent years, has seen a dramatic increase in the number of players interested in Advance Wars. In that vein, I think there's a general curiosity to experience the very first game in the series. This patch improves it, and makes it a lot more palatable to "modern" players. However, I think that a few more tweaks would really make this game shine. That said, I'll keep this change as a stand-alone patch, because a part of me really enjoys the "weirdness" of Famicom Wars, and I think those who dig into the past would enjoy it as well.
 
 In the future, I may make a follow up patch to this; but until then, enjoy.
