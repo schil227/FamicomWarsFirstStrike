@@ -43,11 +43,9 @@ The concept is fairly simple: unlike simultaneous damage, First Strike means tha
 | <img src="images/original_tank_v_tank.gif" style="width:342px" alt="fair game spider movement"/><br/>|<img src="images/first-strike_tank_v_tank.gif" style="width:342px" alt="base game spider movement"/> |
 | <p style="text-align: center;"> Attacker (Red) gains no advantage. </p> | <p style="text-align: center;"> Attacker (Red) gains an advantage. </p>|
 
-The results speak for themselves.
-
 </center>
 
-Now, there is an advantage to attacking your opponent. Now, there are consequences for careless troops deployment. Now there is urgency - now there is *momentum*.
+The results speak for themselves; now there is an advantage to attacking your opponent. Now, there are consequences for careless troops deployment. Now there is *momentum*.
 
 # Technical Details
 When I do these patches, the technical work swings somewhere between "Writing lots of 6502" or "Reading lots of 6502"; in this case it was the latter. This was an investigation; my notes go on and on, walking through several different sections of the code, trying to figure out wtf is going on. In the end, the actual patch is largely moving or copying existing code, and adding only a tiny bit (I think I "added" like 6 Opt Codes, totaling roughly 10 Byte pairs). I was able to do this because I had a good understanding of what was happening, and what I wanted to change.
