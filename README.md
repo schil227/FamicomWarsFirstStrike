@@ -70,30 +70,30 @@ I knew roughly what I was looking for; I wanted to figure out where the damage w
   <img src="images/units_ram.PNG" alt="The location of unit data in RAM"/>
 </p>
 
-Way in the back starting at `$7400` is where player 1's units are stored, while player 2's units are stored in `$7700`. After poking the values quite a bit, I found out some stuff. First off, it's a list of units; each row represents a unit (I have 26 of them in my army). Each column is the value of a different property: for example, $01 is the type of the unit. $02 means that the unit is an infantry for player 1, and $03 also represents an infantry, but for player 2. Out of curiosity, I mapped out a few values more values:
+Way in the back starting at `$7400` is where player 1's units are stored, while player 2's units are stored in `$7700`. After poking the values quite a bit, I found out some stuff. First off, it's a list of units; each row represents a unit (I have 26 of them in my army). Each column is the value of a different property: for example, column $00 is the type of the unit. A value of $02 means that the unit is an infantry for player 1, and a value of $03 also represents an infantry, but for player 2. Out of curiosity, I mapped out a few values more values:
 
 | ID | Unit |
 |---|---|
 | $02 | Infantry |
-| $04 | Engineer (a.k.a. Mech) |
+| $04 | Engineer (Mech) |
 | $06 | Tank A (big) |
 | $08 | Tank A (little) |
 | $0A | APC |
 | $0C | Artillery A (big) |
 | $0E | Artillery B (little) |
 | $10 | Missiles |
-| $12 | Flack Gun |
+| $12 | Flack Gun (AA) |
 | $14 | Supply Truck |
 
-Adding $01 to each of these values would produce the same unit, but for player 2. Why does it start at $02 instead of $00? Well it has to do with the damage lookup (which, I'll get to in the next section).
+Adding $01 to each of these values would produce the same unit, but for player 2. Why does it start at $02 instead of $00? Well it has to do with the damage lookup.
 
-Anyways, there are some other properties as well, but the most useful is located at $05: the current HP of the unit. Interestingly, a fully healed 10-hp unit is represented as $63, which has a decimal value of 99. In my initial search, I was looking for $0A (decimal: 10), but it makes a lot more sense that the number is a bit more "granular". Anyways, I found an address to listen to: I could set a breakpoint on a particular unit's HP (e.g. `$7405`), engage that unit in combat, and see where it leads. So, I did.
+Anyways, there are some other properties as well, but the most useful is located at $05: the unit's HP. Interestingly, a fully healed 10-hp unit is represented as $63, which has a decimal value of 99. In my initial search, I was looking for $0A (decimal: 10), but it makes a lot more sense that the number is a bit more "granular". Anyways, I found an address to listen to: I could set a breakpoint on a particular unit's HP (e.g. `$7405`), engage that unit in combat, and see where it leads. So, I did.
 
 ### The Combat Calculation function
 
 Not surprisingly, the meat of the war game is about determining the damage done between two units. Attaching a breakpoint on one of those units health and walking back from it, I certainly found what I was looking for. I don't actually know for certain where it begins (nor is it particularly relevant for me) but to give some sense of scope, it starts somewhere around `$01ADXX` (possibly earlier) and goes to `01AF90`. Its a lot of code, but it's relatively straightforward. 
 
-As I mentioned earlier, the "data" concerning the two combating units is stored in both  `$04DX` and `$04EX`, but the `E` row is a bit more relevant. For example, the attacking unit's HP is read from the `$7XXX` location (depending on whether it's player 1 or 2) and stored at `$04E1`, while the defending unit's HP is stored at `$04E2`. The rest of the row (thankfully) maintains this attacker value / defender value back-and-forth. Skipping ahead, we see something very exciting: 
+As I mentioned earlier, the "data" concerning the two combating units is stored in both  `$04DX` and `$04EX`, but the `E` row is a bit more relevant. For example, the attacking unit's HP is read from the `$7XX5` location (depending on whether it's player 1 or 2) and stored at `$04E1`, while the defending unit's HP is stored at `$04E2`. The rest of the row (thankfully) maintains this attacker value / defender value back-and-forth. Skipping ahead, we see something very exciting: 
 
 ### The Damage Lookup Table
 
