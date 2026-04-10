@@ -22,7 +22,7 @@ Note: This patch is (to my knowledge) compatible with existing translation patch
 # The Problem
 
 <p align="center">
-  <img src="images/title.PNG" alt="Title"/>
+  <img src="images/title.png" alt="Title"/>
 </p>
 
 Famicom Wars has a healthy legacy that spans even to this day, notably for being the fist entry in the *Wars* series. This eventually begat Advance Wars, one of my favorite games - but what's remarkable is just how similar the two games are to one-another. Or rather, how two games can be so similar to one another, but play completely differently. Advance Wars is *snappy* - units hit harder, there's CO powers to turn the tides, and playing against the CPU is *at least* an order of magnitude faster. Indeed, Advance Wars has the benefit of being made in the future, both on better hardware after a handful of sequels, this is certainly no fault to Famicom Wars. However, if I had to pick *one thing* that totally turns me off from playing Famicom Wars, it would be that most games turn into a total quagmire. 
