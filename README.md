@@ -48,7 +48,7 @@ The concept is fairly simple: unlike simultaneous damage, First Strike means tha
 The results speak for themselves; now there is an advantage to attacking your opponent. Now, there are consequences for careless troops deployment. Now there is *momentum*.
 
 # Technical Details
-When I do these patches, the technical work swings somewhere between "Writing lots of 6502" or "Reading lots of 6502"; in this case it was the latter. This was an investigation; my notes go on and on, walking through several different sections of the code, trying to figure out wtf is going on. In the end, the actual patch is largely moving or copying existing code, and adding only a tiny bit (I think I "added" like 6 Opt Codes, totaling roughly 10 Byte pairs). I was able to do this because I had a good understanding of what was happening, and what I wanted to change.
+When I do these patches, the technical work swings somewhere between "Writing lots of 6502" or "Reading lots of 6502"; in this case it was the latter. This was an investigation - my notes go on and on, walking through several different sections of the code, trying to figure out wtf is going on. In the end, the actual patch is largely moving or copying existing code, and adding only a tiny bit (like 6 Opt Codes). I was able to do this because I had a good understanding of what was happening, and what I wanted to change.
 
 ## The goal
 Instead of "simultaneous" damage, I wanted:
@@ -62,7 +62,7 @@ Instead of "simultaneous" damage, I wanted:
 As stated, most of the work was around orienting myself in the code. This section loosely details that process.
 
 ### Where to begin
-I knew roughly what I was looking for; I wanted to figure out where the damage was being calculated. But to find that, I would need to know where the unit data was stored. I could imagine a few properties in my head: The unit would certainly have current HP, fuel, ammo, x/y location on the grid, etc. But finding that data is looking for a needle in the haystack. I knew that games often moved working memory to the "zero page" (between $00 and $FF in RAM) so that working with it was faster, however I wasn't seeing anything that promising. Turns out, damage calculation did have an "intermediate location" - between `$04Dx` and `$04Ex`. After watching the battle animation a few times, I started to notice that some of these values effected the outcome (more on that later). But, I was still unsure where the units were located. After some more sluting, eventually I found out.
+I knew roughly what I was looking for; I wanted to figure out where the damage was being calculated. But to find that, I would need to know where the unit data was stored. I could imagine a few properties in my head: The unit entity would certainly have current HP, fuel, ammo, x/y location on the grid, etc. But finding that data is looking for a needle in the haystack. I knew that games often moved working memory to the "zero page" (between $00 and $FF in RAM) so that working with it was faster, however I wasn't seeing anything that promising. Turns out, damage calculation did have an "intermediate location" - between `$04Dx` and `$04Ex`. After watching the battle animation a few times, I started to notice that some of these values effected the outcome (more on that later). But, I was still unsure where the units were located. After some more sluting, eventually I found out.
 
 ### My Units, Your Units
 
