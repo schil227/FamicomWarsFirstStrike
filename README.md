@@ -181,7 +181,7 @@ Finally, we get to where the combat is resolved, and where the code change actua
 
 On the left-hand side is the original code, and on the right the code change for this patch. We'll first explore the left side to get acquainted with the code. As said earlier, damage is done simultaneously, and it just so happens that the attacker is resolved first, and the steps are as follows:
 
-1. The adjusted damage done by the defender `$04E8` and the terrain defense for the attacker `$04E9` (omitted from this writeup) are loaded. These two values go through the ~Magic~ SRs (`$C681` and `$AF81`), and the adjusted defense value is produced in $00. 
+1. The adjusted damage done by the defender `$04E8` and the terrain defense for the attacker `$04E9` (omitted from this writeup) are loaded. These two values go through the \~Magic\~ SRs (`$C681` and `$AF81`), and the adjusted defense value is produced in $00. 
     - I really don't know why this is necessary
 1. The adjusted damage done by the defender `$04E8` is again loaded. The adjusted attacker defense value at $00 is subtracted from the adjusted defender damage, and the result (final damage value) is stored in $00.
 1. The attacker's HP is loaded `$04E1`, and now the final damage value is subtracted from the attacker's health. 
@@ -190,9 +190,9 @@ On the left-hand side is the original code, and on the right the code change for
 
 For the defender, the same is done, but the opposite.
 
-Now, in order to do First Strike, the order needs to be reversed, and the defender's adjusted damage value needs to be updated *after* their HP reduced. What's neat about this change is that the vast majority of the code is just moved around. In the right side, this is clear: the defender is resolved first, then the attacker. The code is identical except, instead of loading the defender's adjusted damage value (`LDA $04E8`), the code jumps to the (`01BEEF`) sub routine to re-calculate the damage value. 
+Now, in order to do First Strike, the order needs to be reversed, and the defender's adjusted damage value needs to be updated *after* their HP reduced. What's neat about this change is that the vast majority of the code is just moved around. On the right side, this is clear: the defender is resolved first, then the attacker. The code is identical except, instead of loading the defender's adjusted damage value (`LDA $04E8`), the code jumps to the (`01BEEF`) sub routine to re-calculate the damage value. 
 
-In BEEF, most of the code is copied (see the Damage Adjustment section above), however a little guard-clause was added in the beginning. That clause checks if the defender's adjusted damage is already zero - and if so, just return. Recall that if the adjusted damage value was already zero, it means that the defender couldn't counter attack (e.g. out of ammo, attacker was an indirect). But just the same, if the damage received from the attacker is enough to destroy the defender, then the adjusted damage value would return zero anyway. Once this value is calculated, then the combat resolves for the attacker, and then combat is complete.
+In BEEF, most of the code is copied (see the Damage Adjustment section above), however a little guard-clause was added in the beginning. That clause checks if the defender's adjusted damage is already zero - and if so, just return. Recall that if the adjusted damage value was already zero, it means that the defender couldn't counter-attack (e.g. out of ammo, attacker was an indirect). But just the same, if the damage received from the attacker is enough to destroy the defender, then the adjusted damage value would return zero anyway. Once this value is calculated, then the combat resolves for the attacker, and then combat is complete.
 
 # Conclusion
 <p align="center">
